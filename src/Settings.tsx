@@ -36,6 +36,7 @@ async function importCronometer(text: string): Promise<number> {
   const iDay = col('Day', 'Date'), iGroup = col('Group'), iName = col('Food Name'), iAmt = col('Amount');
   const iK = col('Energy (kcal)'), iP = col('Protein (g)'), iNC = col('Net Carbs (g)'), iC = col('Carbs (g)'), iF = col('Fat (g)');
   const iFib = col('Fiber (g)'), iSug = col('Sugars (g)'), iSat = col('Saturated (g)'), iNa = col('Sodium (mg)');
+  if (iDay >= 0 && iK < 0 && iName >= 0) throw new Error('Ce fichier ne contient pas les valeurs nutritionnelles (export gratuit). Importe plutôt le fichier dailysummary.csv.');
   if (iDay < 0 || iK < 0) throw new Error('Colonnes Cronometer introuvables (Day, Energy (kcal)…).');
   const n = (r: string[], i: number) => (i >= 0 ? parseNum(r[i] ?? '') : 0);
   const out: Entry[] = [];
