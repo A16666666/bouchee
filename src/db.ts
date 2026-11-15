@@ -26,11 +26,35 @@ class DB extends Dexie {
 }
 export const db = new DB();
 
-export async function getGoals(): Promise<Goals> {
-  const r = await db.kv.get('goals');
-  return (r?.v as Goals) ?? DEFAULT_GOALS;
+// Objectifs datés : chaque période s'applique à partir de sa date, jusqu'à la suivante.
+export type GoalPeriod = { from: string; goals: Goals };
+export const FIRST_DAY = '0000-01-01';
+
+export async function getGoalHistory(): Promise<GoalPeriod[]> {
+  const h = await db.kv.get('goalsHistory');
+  if (h?.v) return h.v as GoalPeriod[];
+  const old = await db.kv.get('goals'); // ancienne version : un seul objectif
+  return [{ from: FIRST_DAY, goals: (old?.v as Goals) ?? DEFAULT_GOALS }];
 }
-export const setGoals = (g: Goals) => db.kv.put({ k: 'goals', v: g });
+export function goalsFor(history: GoalPeriod[] | undefined, date: string): Goals {
+  if (!history?.length) return DEFAULT_GOALS;
+  let g = history[0].goals;
+  for (const p of history) if (p.from <= date) g = p.goals;
+  return g;
+}
+export async function setGoalsFrom(from: string, goals: Goals) {
+  const h = (await getGoalHistory()).filter(p => p.from !== from);
+  h.push({ from, goals });
+  h.sort((a, b) => a.from.localeCompare(b.from));
+  h[0] = { ...h[0], from: FIRST_DAY }; // la première période couvre tout le passé
+  await db.kv.put({ k: 'goalsHistory', v: h });
+}
+export async function deleteGoalPeriod(from: string) {
+  const h = (await getGoalHistory()).filter(p => p.from !== from);
+  if (!h.length) return;
+  h[0] = { ...h[0], from: FIRST_DAY };
+  await db.kv.put({ k: 'goalsHistory', v: h });
+}
 
 export async function toggleFav(id: string) {
   if (await db.favs.get(id)) await db.favs.delete(id); else await db.favs.put({ id });

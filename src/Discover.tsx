@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, DEFAULT_GOALS, getGoals, type Goals } from './db';
+import { db, getGoalHistory, goalsFor, type Goals } from './db';
 import { add, addDays, fmt, NKEYS, parseIso, servingNutr, today, zero, type Nutr } from './nutrition';
 import { COLORS } from './ui';
 
@@ -22,7 +22,7 @@ function niceMax(v: number) {
   return (m <= 1.2 ? 1.2 : m <= 1.5 ? 1.5 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 3 ? 3 : m <= 4 ? 4 : m <= 5 ? 5 : m <= 6 ? 6 : m <= 8 ? 8 : 10) * p;
 }
 
-function Chart({ days, data, metric, goal }: { days: string[]; data: Map<string, Required<Nutr>>; metric: Metric; goal: number }) {
+function Chart({ days, data, metric, goals }: { days: string[]; data: Map<string, Required<Nutr>>; metric: Metric; goals: number[] }) {
   const [sel, setSel] = useState<number | null>(null);
   const W = 360, H = 230, L = 38, R = 8, T = 12, B = 26;
   const pw = W - L - R, ph = H - T - B;
@@ -31,7 +31,7 @@ function Chart({ days, data, metric, goal }: { days: string[]; data: Map<string,
     if (!n) return null;
     return metric === 'kcal' ? { stack: [n.prot * 4, n.carbs * 4, n.fat * 9], total: n.kcal } : { stack: [n[metric]], total: n[metric] };
   });
-  const max = niceMax(Math.max(goal, ...vals.map(v => (v ? Math.max(v.total, v.stack.reduce((a, b) => a + b, 0)) : 0))) * 1.05);
+  const max = niceMax(Math.max(...goals, ...vals.map(v => (v ? Math.max(v.total, v.stack.reduce((a, b) => a + b, 0)) : 0))) * 1.05);
   const y = (v: number) => T + ph - (v / max) * ph;
   const step = pw / Math.max(1, days.length);
   const bw = Math.max(1, Math.min(14, step * 0.62));
@@ -68,7 +68,10 @@ function Chart({ days, data, metric, goal }: { days: string[]; data: Map<string,
             </g>
           );
         })}
-        {goal > 0 && <line x1={L} x2={W - R} y1={y(goal)} y2={y(goal)} stroke="#fff" strokeWidth={1.2} strokeDasharray="5 4" />}
+        {goals.length > 0 && (
+          <path fill="none" stroke="#fff" strokeWidth={1.2} strokeDasharray="5 4"
+            d={goals.map((gv, i) => `${i === 0 ? 'M' : 'L'}${L + step * i},${y(gv)} H${L + step * (i + 1)}`).join(' ')} />
+        )}
         <line x1={L} x2={W - R} y1={T + ph} y2={T + ph} stroke="#cfd3e0" strokeWidth={1} />
         {labelIdx.map((i, k) => (
           <text key={k} x={L + step * i + step / 2} y={H - 8} textAnchor={k === 0 ? 'start' : k === labelIdx.length - 1 ? 'end' : 'middle'} className="axis">{short(days[i])}</text>
@@ -92,7 +95,7 @@ export function Discover() {
   const [onlyLogged, setOnlyLogged] = useState(true);
   const [withToday, setWithToday] = useState(false);
   const [metric, setMetric] = useState<Metric>('kcal');
-  const goals: Goals = useLiveQuery(getGoals) ?? DEFAULT_GOALS;
+  const history = useLiveQuery(getGoalHistory);
   const first = useLiveQuery(async () => (await db.entries.orderBy('date').first())?.date, []);
 
   const range = useMemo(() => {
@@ -120,6 +123,11 @@ export function Discover() {
   const avg = zero();
   for (const d of counted) { const n = byDay.get(d); if (n) add(avg, n); }
   if (counted.length) for (const k of NKEYS) avg[k] /= counted.length;
+  const goalDays = days.map(d => goalsFor(history, d));
+  const goalBase = (counted.length ? counted : days).map(d => goalsFor(history, d));
+  const goals: Goals = { kcal: 0, prot: 0, carbs: 0, fat: 0 };
+  for (const gd of goalBase) for (const k of ['kcal', 'prot', 'carbs', 'fat'] as const) goals[k] += gd[k] / goalBase.length;
+  const gArr = (m: Metric) => goalDays.map(gd => gd[m]);
   const mk = { p: avg.prot * 4, c: avg.carbs * 4, f: avg.fat * 9 }; const mt = mk.p + mk.c + mk.f || 1;
 
   const controls = (
@@ -168,7 +176,7 @@ export function Discover() {
               </tbody>
             </table>
           </div>
-          <div className="card"><h3 className="ctitle">Calories consommées (kcal)</h3><Chart days={days} data={byDay} metric="kcal" goal={goals.kcal} /></div>
+          <div className="card"><h3 className="ctitle">Calories consommées (kcal)</h3><Chart days={days} data={byDay} metric="kcal" goals={gArr('kcal')} /></div>
         </>
       )}
 
@@ -178,8 +186,8 @@ export function Discover() {
             {(Object.keys(METRIC) as Metric[]).map(m => <button key={m} className={metric === m ? 'on' : ''} onClick={() => setMetric(m)}>{METRIC[m].label}</button>)}
           </div>
           <h3 className="ctitle">{METRIC[metric].label} ({METRIC[metric].unit})</h3>
-          <Chart days={days} data={byDay} metric={metric} goal={goals[metric]} />
-          <div className="muted small center">Moyenne : {fmt(avg[metric], metric === 'kcal' ? 0 : 1)} {METRIC[metric].unit} / jour · objectif {fmt(goals[metric], 0)}</div>
+          <Chart days={days} data={byDay} metric={metric} goals={gArr(metric)} />
+          <div className="muted small center">Moyenne : {fmt(avg[metric], metric === 'kcal' ? 0 : 1)} {METRIC[metric].unit} / jour · objectif moyen {fmt(goals[metric], 0)}</div>
         </div>
       )}
 
@@ -187,7 +195,7 @@ export function Discover() {
         <div className="card">
           <h3 className="ctitle">Moyennes journalières</h3>
           <table className="rtable">
-            <thead><tr><th></th><th>Moyenne</th><th>Objectif</th><th>%</th></tr></thead>
+            <thead><tr><th></th><th>Moyenne</th><th>Objectif moy.</th><th>%</th></tr></thead>
             <tbody>
               {(['kcal', 'prot', 'carbs', 'fat'] as Metric[]).map(k => (
                 <tr key={k}><td>{METRIC[k].label}</td><td>{fmt(avg[k], k === 'kcal' ? 0 : 1)} {METRIC[k].unit}</td><td>{fmt(goals[k], 0)}</td><td>{goals[k] ? fmt((avg[k] / goals[k]) * 100, 0) + '%' : '–'}</td></tr>

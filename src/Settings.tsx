@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, DEFAULT_GOALS, exportAll, getGoals, importAll, importMerge, setGoals, type Entry } from './db';
-import { fmt, parseNum, type SectionId } from './nutrition';
-import { toast } from './ui';
+import { db, deleteGoalPeriod, exportAll, getGoalHistory, goalsFor, importAll, importMerge, setGoalsFrom, type Entry, type GoalPeriod, type Goals } from './db';
+import { addDays, fmt, parseIso, parseNum, today, type SectionId } from './nutrition';
+import { I, toast } from './ui';
 
 // --- CSV --------------------------------------------------------------------
 function parseCsv(text: string): string[][] {
@@ -74,13 +74,22 @@ function pickFile(accept: string): Promise<File | null> {
 }
 
 export function Settings() {
-  const goals = useLiveQuery(getGoals);
+  const history = useLiveQuery(getGoalHistory);
+  const [from, setFrom] = useState(today());
   const [g, setG] = useState({ kcal: '', prot: '', carbs: '', fat: '' });
   const [persisted, setPersisted] = useState<boolean | null>(null);
   const stats = useLiveQuery(async () => ({ e: await db.entries.count(), f: await db.foods.where('kind').equals('custom').count(), r: await db.recipes.count(), m: await db.meals.count() }));
-  useEffect(() => { if (goals) setG({ kcal: fmt(goals.kcal, 1), prot: fmt(goals.prot, 1), carbs: fmt(goals.carbs, 1), fat: fmt(goals.fat, 1) }); }, [goals]);
+  const fill = (x: Goals) => setG({ kcal: fmt(x.kcal, 1), prot: fmt(x.prot, 1), carbs: fmt(x.carbs, 1), fat: fmt(x.fat, 1) });
+  useEffect(() => { if (history) fill(goalsFor(history, from)); }, [history, from]);
   useEffect(() => { navigator.storage?.persisted?.().then(setPersisted).catch(() => { }); }, []);
   const fromMacros = parseNum(g.prot) * 4 + parseNum(g.carbs) * 4 + parseNum(g.fat) * 9;
+  const periodLabel = (p: GoalPeriod, i: number, all: GoalPeriod[]) => {
+    const next = all[i + 1];
+    const d = (x: string) => parseIso(x).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+    if (i === 0 && !next) return 'Toujours';
+    if (i === 0) return `Jusqu'au ${d(addDays(next.from, -1))}`;
+    return next ? `Du ${d(p.from)} au ${d(addDays(next.from, -1))}` : `Depuis le ${d(p.from)}`;
+  };
 
   return (
     <div className="screen">
@@ -88,17 +97,37 @@ export function Settings() {
 
       <div className="card form">
         <h3 className="ctitle">Objectifs quotidiens</h3>
+        <label className="field"><span>À partir du</span><input type="date" className="date-in" value={from} onChange={e => e.target.value && setFrom(e.target.value)} /></label>
         {([['Énergie', 'kcal', 'kcal'], ['Protéines', 'prot', 'g'], ['Glucides', 'carbs', 'g'], ['Lipides', 'fat', 'g']] as const).map(([l, k, u]) => (
           <label className="field" key={k}><span>{l}</span><input inputMode="decimal" value={g[k]} onChange={e => setG({ ...g, [k]: e.target.value })} /><em>{u}</em></label>
         ))}
         <p className="muted small">Les macros représentent {fmt(fromMacros, 0)} kcal.{' '}
           <button className="link small" onClick={() => setG({ ...g, kcal: fmt(fromMacros, 1) })}>Utiliser cette valeur</button></p>
-        <div className="row gap">
-          <button className="btn primary grow" onClick={async () => {
-            await setGoals({ kcal: parseNum(g.kcal), prot: parseNum(g.prot), carbs: parseNum(g.carbs), fat: parseNum(g.fat) }); toast('Objectifs enregistrés');
-          }}>Enregistrer</button>
-          <button className="btn" onClick={() => setG({ kcal: fmt(DEFAULT_GOALS.kcal, 1), prot: fmt(DEFAULT_GOALS.prot, 1), carbs: fmt(DEFAULT_GOALS.carbs, 1), fat: fmt(DEFAULT_GOALS.fat, 1) })}>Défaut</button>
-        </div>
+        <p className="muted small">Les nouveaux objectifs s'appliquent à partir de cette date. Les jours précédents gardent leurs anciens objectifs.</p>
+        <button className="btn primary block" onClick={async () => {
+          await setGoalsFrom(from, { kcal: parseNum(g.kcal), prot: parseNum(g.prot), carbs: parseNum(g.carbs), fat: parseNum(g.fat) });
+          toast('Objectifs enregistrés');
+        }}>Enregistrer</button>
+
+        {history && history.length > 0 && (
+          <>
+            <div className="list-title" style={{ paddingLeft: 0 }}>Historique</div>
+            <ul className="list goal-hist">
+              {history.map((p, i, all) => (
+                <li key={p.from} onClick={() => setFrom(i === 0 ? (all.length > 1 ? addDays(all[1].from, -1) : today()) : p.from)}>
+                  <div>
+                    <div className="b">{periodLabel(p, i, all)}</div>
+                    <div className="muted small">{fmt(p.goals.kcal, 0)} kcal · P {fmt(p.goals.prot, 0)} · G {fmt(p.goals.carbs, 0)} · L {fmt(p.goals.fat, 0)}</div>
+                  </div>
+                  {i > 0 && <button className="icon-btn" aria-label="Supprimer" onClick={async e => {
+                    e.stopPropagation();
+                    if (confirm('Supprimer cette période ? Ces jours reprendront les objectifs de la période précédente.')) await deleteGoalPeriod(p.from);
+                  }}><I.trash size={20} /></button>}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </div>
 
       <div className="card">

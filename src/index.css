@@ -189,3 +189,6 @@ details { margin-top: 10px; } summary { cursor: pointer; }
 
 .toast { position: fixed; left: 50%; bottom: calc(120px + var(--safe-bot)); transform: translate(-50%, 20px); background: #F3F4F8; color: #11131D; padding: 10px 16px; border-radius: 22px; font-weight: 600; font-size: 14px; opacity: 0; pointer-events: none; transition: all .2s; z-index: 999; max-width: 90%; text-align: center; }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+.field > input.date-in { width: auto; text-align: right; }
+.goal-hist li { padding: 10px 0; }

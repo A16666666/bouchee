@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, DEFAULT_GOALS, getGoals, type Entry } from './db';
+import { db, getGoalHistory, goalsFor, type Entry } from './db';
 import { addDays, dayLabel, fmt, SECTIONS, servingLabel, servingNutr, sumServings, today, type SectionId } from './nutrition';
 import { FoodPicker, QuantityForm } from './FoodPicker';
 import { MealEditor } from './Editors';
@@ -30,7 +30,8 @@ function EntryEditor({ e }: { e: Entry }) {
 export function Journal({ date, setDate }: { date: string; setDate: (d: string) => void }) {
   const nav = useNav();
   const entries = useLiveQuery(() => db.entries.where('date').equals(date).toArray(), [date]) ?? [];
-  const goals = useLiveQuery(getGoals) ?? DEFAULT_GOALS;
+  const history = useLiveQuery(getGoalHistory);
+  const goals = goalsFor(history, date);
   const t = sumServings(entries);
   const [closed, setClosed] = useState<Record<string, boolean>>({});
 
