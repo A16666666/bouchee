@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, toggleFav } from './db';
 import {
-  defaultServing, fmt, parseNum, scale, SECTIONS, servingLabel, sumServings, unitsFor,
+  defaultServing, fmt, mealToItem, parseNum, scale, SECTIONS, servingLabel, sumServings, unitsFor,
   type Item, type Meal, type SectionId, type Serving,
 } from './nutrition';
 import { customResults, favResults, localSearch, recentResults, TAG, type Result } from './items';
@@ -238,7 +238,8 @@ export function FoodPicker({ mode, date, initialSection, excludeRecipe, startWit
     return (
       <Sheet title="Repas" onClose={() => setView('search')}>
         <MealLog meal={sel.meal} section={section} setSection={setSection} onDone={async mult => {
-          await db.entries.bulkAdd(sel.meal.items.map(s => ({ ...s, qty: s.qty * mult, date: date!, section, ts: Date.now() })));
+          const item = mealToItem(sel.meal);
+          await db.entries.add({ item, qty: mult, unit: 'repas', unitGrams: item.portions[0].grams, date: date!, section, ts: Date.now() });
           toast(`${sel.meal.name} ajouté`); nav.pop();
         }} />
       </Sheet>

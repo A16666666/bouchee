@@ -46,13 +46,19 @@ export async function exportAll() {
 }
 // Fusion (sans rien effacer) : utilisé pour l'import de l'historique Cronometer.
 export type MergeFile = {
-  app: 'bouchee'; merge: true; id: string;
+  app: 'bouchee'; merge: true; id: string; replaces?: string;
   foods?: Item[]; recipes?: Recipe[]; meals?: Meal[]; entries?: Entry[]; favs?: { id: string }[];
 };
 export async function importMerge(data: MergeFile): Promise<{ entries: number; already: boolean }> {
   const key = 'merged:' + data.id;
   if (await db.kv.get(key)) return { entries: 0, already: true };
   await db.transaction('rw', [db.entries, db.foods, db.recipes, db.meals, db.favs, db.kv], async () => {
+    if (data.replaces && await db.kv.get('merged:' + data.replaces)) {
+      // retire les entrées de l'import précédent (horodatées à midi + n ms)
+      const noon = (d: string) => { const [y, m, dd] = d.split('-').map(Number); return new Date(y, m - 1, dd, 12).getTime(); };
+      await db.entries.filter(e => { const x = e.ts - noon(e.date); return x >= 0 && x < 1000; }).delete();
+      await db.kv.delete('merged:' + data.replaces);
+    }
     if (data.foods) await db.foods.bulkPut(data.foods);
     if (data.recipes) await db.recipes.bulkPut(data.recipes);
     if (data.meals) await db.meals.bulkPut(data.meals);

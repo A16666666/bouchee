@@ -16,7 +16,7 @@ export const CAT_LABEL: Record<Cat, string> = {
 
 export type Portion = { label: string; grams: number };
 
-export type ItemKind = 'base' | 'off' | 'custom' | 'recipe' | 'import';
+export type ItemKind = 'base' | 'off' | 'custom' | 'recipe' | 'meal' | 'import';
 export type Item = {
   id: string; kind: ItemKind; name: string; brand?: string;
   per100: Nutr; cat: Cat; portions: Portion[]; barcode?: string; noSpoons?: boolean;
@@ -94,6 +94,15 @@ export function recipeToItem(r: Recipe): Item {
   return { id: r.id, kind: 'recipe', name: r.name, per100, cat: 'generic', portions, noSpoons: true };
 }
 
+// Un repas perso s'ajoute au journal comme un seul élément.
+export function mealToItem(m: Meal): Item {
+  const total = sumServings(m.items);
+  const grams = m.items.reduce((g, s) => g + servingGrams(s), 0) || 100;
+  const per100 = zero();
+  for (const k of NKEYS) per100[k] = (total[k] * 100) / grams;
+  return { id: m.id, kind: 'meal', name: m.name, per100, cat: 'generic', portions: [{ label: 'repas', grams }], noSpoons: true };
+}
+
 // Formatage ----------------------------------------------------------------
 export function fmt(n: number, d = 1): string {
   if (!isFinite(n)) return '0';
@@ -108,6 +117,7 @@ export function servingLabel(s: Serving): string {
   const q = fmt(s.qty, 2);
   if (s.unit === 'g' || s.unit === 'ml' || s.unit === 'cl' || s.unit === 'kg' || s.unit === 'l') return `${q} ${s.unit}`;
   if (s.unit === '100 g') return `${fmt(s.qty * 100, 0)} g`;
+  if (s.unit === 'repas' || s.unit === 'recette complète') return s.qty === 1 ? `1 ${s.unit}` : `${q} × ${s.unit}`;
   return `${q} × ${s.unit}`;
 }
 export const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');

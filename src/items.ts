@@ -1,19 +1,20 @@
 import { BASE_BY_ID, BASE_FOODS } from './baseFoods';
 import { db } from './db';
-import { norm, recipeToItem, type Item, type Meal, type Serving } from './nutrition';
+import { mealToItem, norm, recipeToItem, type Item, type Meal, type Serving } from './nutrition';
 
 export type Result =
   | { type: 'item'; item: Item; last?: Serving }
   | { type: 'meal'; meal: Meal };
 
 export const TAG: Record<string, string> = {
-  base: 'Base', off: 'Open Food Facts', custom: 'Aliment personnalisé', recipe: 'Recette personnalisée', import: 'Importé',
+  base: 'Base', off: 'Open Food Facts', custom: 'Aliment personnalisé', recipe: 'Recette personnalisée', meal: 'Repas personnalisé', import: 'Importé',
 };
 
 // Renvoie la version à jour d'un aliment (une recette ou un aliment perso a pu être modifié).
 export async function resolveItem(id: string, fallback?: Item): Promise<Item | undefined> {
   if (id.startsWith('b:')) return BASE_BY_ID.get(id) ?? fallback;
   if (id.startsWith('r:')) { const r = await db.recipes.get(id); return r ? recipeToItem(r) : fallback; }
+  if (id.startsWith('m:')) { const m = await db.meals.get(id); return m ? mealToItem(m) : fallback; }
   return (await db.foods.get(id)) ?? fallback;
 }
 
@@ -23,6 +24,7 @@ export async function recentResults(limit = 40): Promise<Result[]> {
   for (const e of entries) {
     if (seen.has(e.item.id) || e.item.kind === 'import') continue;
     seen.add(e.item.id);
+    if (e.item.kind === 'meal') { const m = await db.meals.get(e.item.id); if (m) out.push({ type: 'meal', meal: m }); continue; }
     const item = await resolveItem(e.item.id, e.item);
     if (item) out.push({ type: 'item', item, last: { item, qty: e.qty, unit: e.unit, unitGrams: e.unitGrams } });
     if (out.length >= limit) break;
