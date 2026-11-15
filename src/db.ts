@@ -44,6 +44,25 @@ export async function exportAll() {
     favs: await db.favs.toArray(), kv: await db.kv.toArray(),
   };
 }
+// Fusion (sans rien effacer) : utilisé pour l'import de l'historique Cronometer.
+export type MergeFile = {
+  app: 'bouchee'; merge: true; id: string;
+  foods?: Item[]; recipes?: Recipe[]; meals?: Meal[]; entries?: Entry[]; favs?: { id: string }[];
+};
+export async function importMerge(data: MergeFile): Promise<{ entries: number; already: boolean }> {
+  const key = 'merged:' + data.id;
+  if (await db.kv.get(key)) return { entries: 0, already: true };
+  await db.transaction('rw', [db.entries, db.foods, db.recipes, db.meals, db.favs, db.kv], async () => {
+    if (data.foods) await db.foods.bulkPut(data.foods);
+    if (data.recipes) await db.recipes.bulkPut(data.recipes);
+    if (data.meals) await db.meals.bulkPut(data.meals);
+    if (data.favs) await db.favs.bulkPut(data.favs);
+    if (data.entries) await db.entries.bulkAdd(data.entries.map(({ id: _id, ...e }) => e as Entry));
+    await db.kv.put({ k: key, v: Date.now() });
+  });
+  return { entries: data.entries?.length ?? 0, already: false };
+}
+
 export async function importAll(data: Awaited<ReturnType<typeof exportAll>>) {
   if (data?.app !== 'bouchee') throw new Error('Fichier non reconnu');
   await db.transaction('rw', [db.entries, db.foods, db.recipes, db.meals, db.favs, db.kv], async () => {

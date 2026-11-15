@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, DEFAULT_GOALS, exportAll, getGoals, importAll, setGoals, type Entry } from './db';
+import { db, DEFAULT_GOALS, exportAll, getGoals, importAll, importMerge, setGoals, type Entry } from './db';
 import { fmt, parseNum, type SectionId } from './nutrition';
 import { toast } from './ui';
 
@@ -110,9 +110,17 @@ export function Settings() {
         }}>Exporter une sauvegarde</button>
         <button className="btn block" onClick={async () => {
           const f = await pickFile('.json,application/json'); if (!f) return;
-          if (!confirm('Restaurer cette sauvegarde ? Les données actuelles seront remplacées.')) return;
-          try { await importAll(JSON.parse(await f.text())); toast('Sauvegarde restaurée'); } catch (e) { alert('Import impossible : ' + (e as Error).message); }
-        }}>Restaurer une sauvegarde</button>
+          try {
+            const data = JSON.parse(await f.text());
+            if (data?.merge) {
+              const r = await importMerge(data);
+              toast(r.already ? 'Ce fichier a déjà été importé' : `Import terminé : ${r.entries} entrée(s)`);
+              return;
+            }
+            if (!confirm('Restaurer cette sauvegarde ? Les données actuelles seront remplacées.')) return;
+            await importAll(data); toast('Sauvegarde restaurée');
+          } catch (e) { alert('Import impossible : ' + (e as Error).message); }
+        }}>Importer un fichier / restaurer une sauvegarde</button>
         <button className="btn block" onClick={async () => {
           const f = await pickFile('.csv,text/csv'); if (!f) return;
           try { const n = await importCronometer(await f.text()); toast(`${n} entrée(s) importée(s)`); } catch (e) { alert('Import impossible : ' + (e as Error).message); }
