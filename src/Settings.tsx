@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, deleteGoalPeriod, exportAll, getGoalHistory, goalsFor, importAll, importMerge, setGoalsFrom, type Entry, type GoalPeriod, type Goals } from './db';
 import { addDays, fmt, parseIso, parseNum, today, type SectionId } from './nutrition';
 import { I, toast } from './ui';
+import { VERSION } from './version';
 
 // --- CSV --------------------------------------------------------------------
 function parseCsv(text: string): string[][] {
@@ -154,6 +155,14 @@ export function Settings() {
           const f = await pickFile('.csv,text/csv'); if (!f) return;
           try { const n = await importCronometer(await f.text()); toast(`${n} entrée(s) importée(s)`); } catch (e) { alert('Import impossible : ' + (e as Error).message); }
         }}>Importer un export Cronometer (CSV)</button>
+        <button className="btn block" onClick={async () => {
+          if (!confirm("Réparer l'historique Cronometer ? Toutes les entrées importées de Cronometer (jusqu'au 15 nov.) sont supprimées puis réimportées une seule fois, et les objectifs d'avant le 16 nov. sont remis à 2202 kcal. Tes propres saisies ne sont pas touchées.")) return;
+          try {
+            const r = await fetch('./reparation-cronometer.json', { cache: 'no-store' });
+            const res = await importMerge(await r.json());
+            alert(`Réparation terminée : ${res.removed} entrée(s) en double supprimée(s), ${res.entries} réimportée(s).`);
+          } catch (e) { alert('Réparation impossible : ' + (e as Error).message); }
+        }}>Réparer l'historique Cronometer</button>
         <details className="muted small">
           <summary>Comment exporter depuis Cronometer ?</summary>
           Sur cronometer.com (navigateur), va dans Settings → Account → Export Data, puis choisis « Food &amp; Recipe Entries » (fichier servings.csv). Ouvre le fichier depuis l'app Fichiers via le bouton ci-dessus.
@@ -170,7 +179,7 @@ export function Settings() {
       </div>
 
       <div className="card muted small about">
-        <b>Bouchée</b> · v1.0<br />
+        <b>Bouchée</b> · v{VERSION}<br />
         Données produits : Open Food Facts (licence ODbL), contributeurs bénévoles — les valeurs peuvent contenir des erreurs.
         Aliments de base : valeurs moyennes indicatives (ordres de grandeur Ciqual/USDA).
       </div>

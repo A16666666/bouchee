@@ -8,6 +8,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: false,
       includeAssets: ['icon.svg', 'icon-180.png'],
       manifest: {
         name: 'Bouchée',
@@ -26,7 +27,7 @@ export default defineConfig({
           { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
-      workbox: { globPatterns: ['**/*.{js,css,html,svg,png}'], navigateFallback: '/bouchee/index.html' },
+      workbox: { clientsClaim: true, skipWaiting: true, cleanupOutdatedCaches: true, globPatterns: ['**/*.{js,css,html,svg,png}'], globIgnores: ['reparation-*.json'], navigateFallback: '/bouchee/index.html' },
     }),
   ],
 });

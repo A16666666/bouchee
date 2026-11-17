@@ -88,7 +88,7 @@ export function isCronometerImport(e: Entry): boolean {
 
 export async function importMerge(data: MergeFile): Promise<{ entries: number; removed: number; already: boolean }> {
   const key = 'merged:' + data.id;
-  if (await db.kv.get(key)) return { entries: 0, removed: 0, already: true };
+  if (!data.purgeCronometer && await db.kv.get(key)) return { entries: 0, removed: 0, already: true };
   let removed = 0;
   await db.transaction('rw', [db.entries, db.foods, db.recipes, db.meals, db.favs, db.kv], async () => {
     const until = data.purgeCronometer?.until ?? (data.replaces && await db.kv.get('merged:' + data.replaces) ? '9999-12-31' : null);
