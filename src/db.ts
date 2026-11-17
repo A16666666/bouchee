@@ -68,20 +68,35 @@ export async function exportAll() {
     favs: await db.favs.toArray(), kv: await db.kv.toArray(),
   };
 }
-// Fusion (sans rien effacer) : utilisé pour l'import de l'historique Cronometer.
+// Fusion (sans rien effacer, sauf ce qu'un fichier de réparation demande).
 export type MergeFile = {
   app: 'bouchee'; merge: true; id: string; replaces?: string;
+  purgeCronometer?: { until: string };            // retire tout ce qui vient d'un import Cronometer jusqu'à cette date
+  goalsBefore?: { date: string; goals: Goals };   // objectifs appliqués à tous les jours avant cette date
   foods?: Item[]; recipes?: Recipe[]; meals?: Meal[]; entries?: Entry[]; favs?: { id: string }[];
 };
-export async function importMerge(data: MergeFile): Promise<{ entries: number; already: boolean }> {
+
+// Une entrée vient d'un import Cronometer si c'est un résumé journalier importé, ou si elle
+// référence un élément « crono » et porte l'horodatage des fichiers d'import (midi ± 2 h + n ms).
+export function isCronometerImport(e: Entry): boolean {
+  if (e.item.kind === 'import') return true;
+  if (!/^[crm]:crono-/.test(e.item.id)) return false;
+  const [y, m, d] = e.date.split('-').map(Number);
+  const x = e.ts - new Date(y, m - 1, d, 12).getTime();
+  return x >= -3 * 3600_000 && x < 3 * 3600_000 && e.ts % 60_000 < 1000;
+}
+
+export async function importMerge(data: MergeFile): Promise<{ entries: number; removed: number; already: boolean }> {
   const key = 'merged:' + data.id;
-  if (await db.kv.get(key)) return { entries: 0, already: true };
+  if (await db.kv.get(key)) return { entries: 0, removed: 0, already: true };
+  let removed = 0;
   await db.transaction('rw', [db.entries, db.foods, db.recipes, db.meals, db.favs, db.kv], async () => {
-    if (data.replaces && await db.kv.get('merged:' + data.replaces)) {
-      // retire les entrées de l'import précédent (horodatées à midi + n ms)
-      const noon = (d: string) => { const [y, m, dd] = d.split('-').map(Number); return new Date(y, m - 1, dd, 12).getTime(); };
-      await db.entries.filter(e => { const x = e.ts - noon(e.date); return x >= 0 && x < 1000; }).delete();
-      await db.kv.delete('merged:' + data.replaces);
+    const until = data.purgeCronometer?.until ?? (data.replaces && await db.kv.get('merged:' + data.replaces) ? '9999-12-31' : null);
+    if (until) removed = await db.entries.filter(e => e.date <= until && isCronometerImport(e)).delete();
+    if (data.goalsBefore) {
+      const h = (await getGoalHistory()).filter(p => p.from >= data.goalsBefore!.date);
+      h.unshift({ from: FIRST_DAY, goals: data.goalsBefore.goals });
+      await db.kv.put({ k: 'goalsHistory', v: h });
     }
     if (data.foods) await db.foods.bulkPut(data.foods);
     if (data.recipes) await db.recipes.bulkPut(data.recipes);
@@ -90,7 +105,7 @@ export async function importMerge(data: MergeFile): Promise<{ entries: number; a
     if (data.entries) await db.entries.bulkAdd(data.entries.map(({ id: _id, ...e }) => e as Entry));
     await db.kv.put({ k: key, v: Date.now() });
   });
-  return { entries: data.entries?.length ?? 0, already: false };
+  return { entries: data.entries?.length ?? 0, removed, already: false };
 }
 
 export async function importAll(data: Awaited<ReturnType<typeof exportAll>>) {

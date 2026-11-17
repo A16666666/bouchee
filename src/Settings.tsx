@@ -143,7 +143,7 @@ export function Settings() {
             const data = JSON.parse(await f.text());
             if (data?.merge) {
               const r = await importMerge(data);
-              toast(r.already ? 'Ce fichier a déjà été importé' : `Import terminé : ${r.entries} entrée(s)`);
+              toast(r.already ? 'Ce fichier a déjà été importé' : `Import terminé : ${r.entries} entrée(s)` + (r.removed ? `, ${r.removed} doublon(s) retiré(s)` : ''));
               return;
             }
             if (!confirm('Restaurer cette sauvegarde ? Les données actuelles seront remplacées.')) return;
