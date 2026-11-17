@@ -20,8 +20,9 @@ export function QuantityForm({ item, init, section, onSection, confirmLabel, onC
 }) {
   const start = init ?? defaultServing(item);
   const units = useMemo(() => {
-    const u = unitsFor(item);
-    return u.some(p => p.label === start.unit) ? u : [{ label: start.unit, grams: start.unitGrams }, ...u];
+    // l'unité enregistrée garde son poids d'origine (ex. un repas modifié depuis)
+    const u = unitsFor(item).filter(p => p.label !== start.unit);
+    return [{ label: start.unit, grams: start.unitGrams }, ...u];
   }, [item, start.unit, start.unitGrams]);
   const [qty, setQty] = useState(fmt(start.qty, 2));
   const [unit, setUnit] = useState(start.unit);

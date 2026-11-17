@@ -36,9 +36,12 @@ export function Journal({ date, setDate }: { date: string; setDate: (d: string) 
   const [closed, setClosed] = useState<Record<string, boolean>>({});
 
   const openEntry = async (e: Entry) => {
-    // rafraîchit les unités si l'aliment perso / la recette a été modifié(e)
-    const item = (await resolveItem(e.item.id, e.item)) ?? e.item;
-    nav.push(<EntryEditor e={{ ...e, item: { ...item, per100: e.item.per100 } }} />);
+    // Une entrée garde l'instantané enregistré (nom, valeurs, poids) : modifier
+    // un repas ou une recette ensuite ne change pas le journal. Pour un aliment
+    // simple, on propose seulement les portions ajoutées depuis.
+    if (e.item.kind === 'meal' || e.item.kind === 'recipe') { nav.push(<EntryEditor e={e} />); return; }
+    const fresh = await resolveItem(e.item.id, e.item);
+    nav.push(<EntryEditor e={{ ...e, item: { ...e.item, portions: fresh?.portions ?? e.item.portions } }} />);
   };
 
   return (
