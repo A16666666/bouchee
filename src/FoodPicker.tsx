@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, toggleFav } from './db';
 import {
-  defaultServing, fmt, mealToItem, parseNum, scale, SECTIONS, servingLabel, sumServings, unitsFor,
-  type Item, type Meal, type SectionId, type Serving,
+  defaultServing, fmt, mealItemFromParts, parseNum, scale, SECTIONS, servingLabel, sumServings, unitsFor,
+  type Item, type SectionId, type Serving,
 } from './nutrition';
 import { customResults, favResults, localSearch, recentResults, TAG, type Result } from './items';
 import { searchOff, lookupBarcode } from './off';
@@ -92,23 +92,37 @@ export function QuantityForm({ item, init, section, onSection, confirmLabel, onC
 }
 
 // ---------------------------------------------------------------------------
-// Ajout d'un repas perso au journal
-function MealLog({ meal, section, setSection, onDone }: { meal: Meal; section: SectionId; setSection: (s: SectionId) => void; onDone: (mult: number) => void }) {
-  const [mult, setMult] = useState('1');
+// Repas dans le journal : quantités d'ingrédients modifiables pour cette entrée
+// seulement (le repas enregistré n'est pas touché).
+export function MealEntryForm({ id, name, parts: init, mult: initMult = 1, section, onSection, confirmLabel, onConfirm, extra }: {
+  id: string; name: string; parts: Serving[]; mult?: number;
+  section: SectionId; onSection: (s: SectionId) => void;
+  confirmLabel: string; onConfirm: (item: Item, mult: number) => void; extra?: ReactNode;
+}) {
+  const [rows, setRows] = useState(() => init.map(s => ({ s, q: fmt(s.qty, 2).replace(/\s/g, '') })));
+  const [mult, setMult] = useState(fmt(initMult, 2));
   const m = parseNum(mult);
-  const tot = sumServings(meal.items);
-  const fav = useLiveQuery(() => db.favs.get(meal.id), [meal.id]);
+  const parts: Serving[] = rows.map(r => ({ ...r.s, qty: parseNum(r.q) })).filter(s => s.qty > 0);
+  const tot = sumServings(parts);
+  const fav = useLiveQuery(() => db.favs.get(id), [id]);
+  const changed = rows.some((r, i) => parseNum(r.q) !== init[i].qty);
+  const setUnit = (i: number, label: string) => setRows(rows.map((r, j) => {
+    if (j !== i) return r;
+    const u = [{ label: r.s.unit, grams: r.s.unitGrams }, ...unitsFor(r.s.item)].find(p => p.label === label)!;
+    const grams = parseNum(r.q) * r.s.unitGrams;
+    return { s: { ...r.s, unit: u.label, unitGrams: u.grams }, q: fmt(grams / u.grams, u.grams >= 50 ? 2 : 1).replace(/\s/g, '') };
+  }));
   return (
     <div className="qform">
       <div className="qhead">
-        <div><h3>{meal.name}</h3><div className="muted small">Repas personnalisé · {meal.items.length} élément(s)</div></div>
-        <button className={'icon-btn ' + (fav ? 'fav-on' : '')} onClick={() => toggleFav(meal.id)}><I.star /></button>
+        <div><h3>{name}</h3><div className="muted small">Repas personnalisé · {init.length} élément(s)</div></div>
+        <button className={'icon-btn ' + (fav ? 'fav-on' : '')} onClick={() => toggleFav(id)}><I.star /></button>
       </div>
       <div className="row gap">
         <input className="qty" inputMode="decimal" value={mult} onChange={e => setMult(e.target.value)} onFocus={e => e.target.select()} />
         <div className="unit-fixed">× repas</div>
       </div>
-      <select className="mt" value={section} onChange={e => setSection(e.target.value as SectionId)}>
+      <select className="mt" value={section} onChange={e => onSection(e.target.value as SectionId)}>
         {SECTIONS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
       </select>
       <div className="card ncard">
@@ -119,12 +133,28 @@ function MealLog({ meal, section, setSection, onDone }: { meal: Meal; section: S
           <div><i style={{ background: COLORS.fat }} />Lipides<b>{fmt(tot.fat * m)} g</b></div>
         </div>
       </div>
-      <ul className="list">
-        {meal.items.map((s, i) => (
-          <li key={i}><div><div>{s.item.name}</div><div className="muted small">{servingLabel({ ...s, qty: s.qty * m })}</div></div></li>
-        ))}
+      <div className="list-title" style={{ paddingLeft: 0 }}>Ingrédients {changed && <button className="link small" onClick={() => setRows(init.map(s => ({ s, q: fmt(s.qty, 2).replace(/\s/g, '') })))}>Réinitialiser</button>}</div>
+      <ul className="list parts">
+        {rows.map((r, i) => {
+          const units = [{ label: r.s.unit, grams: r.s.unitGrams }, ...unitsFor(r.s.item).filter(p => p.label !== r.s.unit)];
+          return (
+            <li key={i}>
+              <div className="grow">
+                <div className="b">{r.s.item.name}</div>
+                <div className="muted small">{fmt(scale(r.s.item.per100, parseNum(r.q) * r.s.unitGrams).kcal * m, 0)} kcal</div>
+              </div>
+              <input className="pq" inputMode="decimal" value={r.q} onFocus={e => e.target.select()}
+                onChange={e => setRows(rows.map((x, j) => j === i ? { ...x, q: e.target.value } : x))} />
+              <select className="pu" value={r.s.unit} onChange={e => setUnit(i, e.target.value)}>
+                {units.map(u => <option key={u.label} value={u.label}>{u.label}</option>)}
+              </select>
+            </li>
+          );
+        })}
       </ul>
-      <button className="btn primary block" disabled={!(m > 0)} onClick={() => onDone(m)}>Ajouter au journal</button>
+      <p className="muted small">Ces quantités ne changent que cette entrée du journal, pas le repas enregistré.</p>
+      <button className="btn primary block" disabled={!(m > 0) || !parts.length} onClick={() => onConfirm(mealItemFromParts(id, name, parts), m)}>{confirmLabel}</button>
+      {extra}
     </div>
   );
 }
@@ -238,11 +268,11 @@ export function FoodPicker({ mode, date, initialSection, excludeRecipe, startWit
   if (view === 'meal' && sel?.type === 'meal') {
     return (
       <Sheet title="Repas" onClose={() => setView('search')}>
-        <MealLog meal={sel.meal} section={section} setSection={setSection} onDone={async mult => {
-          const item = mealToItem(sel.meal);
-          await db.entries.add({ item, qty: mult, unit: 'repas', unitGrams: item.portions[0].grams, date: date!, section, ts: Date.now() });
-          toast(`${sel.meal.name} ajouté`); nav.pop();
-        }} />
+        <MealEntryForm id={sel.meal.id} name={sel.meal.name} parts={sel.meal.items} section={section} onSection={setSection}
+          confirmLabel="Ajouter au journal" onConfirm={async (item, mult) => {
+            await db.entries.add({ item, qty: mult, unit: 'repas', unitGrams: item.portions[0].grams, date: date!, section, ts: Date.now() });
+            toast(`${sel.meal.name} ajouté`); nav.pop();
+          }} />
       </Sheet>
     );
   }

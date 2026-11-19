@@ -192,3 +192,6 @@ details { margin-top: 10px; } summary { cursor: pointer; }
 
 .field > input.date-in { width: auto; text-align: right; }
 .goal-hist li { padding: 10px 0; }
+.parts li { padding: 10px 0; gap: 8px; }
+.parts .pq { width: 64px; text-align: center; padding: 9px 6px; flex-shrink: 0; }
+.parts .pu { width: 96px; flex-shrink: 0; padding: 9px 26px 9px 8px; font-size: 14px; }

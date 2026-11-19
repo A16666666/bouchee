@@ -20,6 +20,7 @@ export type ItemKind = 'base' | 'off' | 'custom' | 'recipe' | 'meal' | 'import';
 export type Item = {
   id: string; kind: ItemKind; name: string; brand?: string;
   per100: Nutr; cat: Cat; portions: Portion[]; barcode?: string; noSpoons?: boolean;
+  parts?: { item: object; qty: number; unit: string; unitGrams: number }[]; // repas : ingrédients (et quantités) tels qu'ajoutés au journal
 };
 
 // Une quantité d'un aliment (entrée de journal, ingrédient, élément de repas).
@@ -95,13 +96,14 @@ export function recipeToItem(r: Recipe): Item {
 }
 
 // Un repas perso s'ajoute au journal comme un seul élément.
-export function mealToItem(m: Meal): Item {
-  const total = sumServings(m.items);
-  const grams = m.items.reduce((g, s) => g + servingGrams(s), 0) || 100;
+export function mealItemFromParts(id: string, name: string, parts: Serving[]): Item {
+  const total = sumServings(parts);
+  const grams = parts.reduce((g, s) => g + servingGrams(s), 0) || 100;
   const per100 = zero();
   for (const k of NKEYS) per100[k] = (total[k] * 100) / grams;
-  return { id: m.id, kind: 'meal', name: m.name, per100, cat: 'generic', portions: [{ label: 'repas', grams }], noSpoons: true };
+  return { id, kind: 'meal', name, per100, cat: 'generic', portions: [{ label: 'repas', grams }], noSpoons: true, parts: parts as Item['parts'] };
 }
+export const mealToItem = (m: Meal): Item => mealItemFromParts(m.id, m.name, m.items);
 
 // Formatage ----------------------------------------------------------------
 export function fmt(n: number, d = 1): string {

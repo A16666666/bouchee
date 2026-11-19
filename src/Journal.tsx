@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, getGoalHistory, goalsFor, type Entry } from './db';
-import { addDays, dayLabel, fmt, SECTIONS, servingLabel, servingNutr, sumServings, today, type SectionId } from './nutrition';
-import { FoodPicker, QuantityForm } from './FoodPicker';
+import { type Serving, addDays, dayLabel, fmt, SECTIONS, servingLabel, servingNutr, sumServings, today, type SectionId } from './nutrition';
+import { FoodPicker, MealEntryForm, QuantityForm } from './FoodPicker';
 import { MealEditor } from './Editors';
 import { resolveItem } from './items';
 import { COLORS, I, MacroBar, Sheet, toast, useNav } from './ui';
@@ -10,11 +10,7 @@ import { COLORS, I, MacroBar, Sheet, toast, useNav } from './ui';
 function EntryEditor({ e }: { e: Entry }) {
   const nav = useNav();
   const [section, setSection] = useState<SectionId>(e.section);
-  return (
-    <Sheet title="Modifier">
-      <QuantityForm item={e.item} init={e} section={section} onSection={setSection} confirmLabel="Enregistrer"
-        onConfirm={async s => { await db.entries.update(e.id!, { ...s, section }); nav.pop(); }}
-        extra={<>
+  const extra = (<>
           {e.date !== today() && (
             <button className="btn block" onClick={async () => {
               const { id: _id, ...rest } = e; await db.entries.add({ ...rest, date: today(), ts: Date.now() });
@@ -22,7 +18,17 @@ function EntryEditor({ e }: { e: Entry }) {
             }}>Copier vers aujourd'hui</button>
           )}
           <button className="btn danger block" onClick={async () => { await db.entries.delete(e.id!); nav.pop(); }}>Supprimer du journal</button>
-        </>} />
+        </>);
+  return (
+    <Sheet title="Modifier">
+      {e.item.kind === 'meal' && e.item.parts?.length ? (
+        <MealEntryForm id={e.item.id} name={e.item.name} parts={e.item.parts as Serving[]} mult={e.qty} section={section} onSection={setSection}
+          confirmLabel="Enregistrer" extra={extra}
+          onConfirm={async (item, mult) => { await db.entries.update(e.id!, { item, qty: mult, unit: 'repas', unitGrams: item.portions[0].grams, section }); nav.pop(); }} />
+      ) : (
+        <QuantityForm item={e.item} init={e} section={section} onSection={setSection} confirmLabel="Enregistrer"
+          onConfirm={async s => { await db.entries.update(e.id!, { ...s, section }); nav.pop(); }} extra={extra} />
+      )}
     </Sheet>
   );
 }
